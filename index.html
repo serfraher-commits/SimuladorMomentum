@@ -1,0 +1,324 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <title>Boundary Master Pro - Medal Board Edition</title>
+    <style>
+        body {
+            background-color: #020617;
+            color: #38bdf8;
+            font-family: 'Courier New', Courier, monospace;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 20px;
+        }
+        h2 { margin: 0 0 10px 0; text-shadow: 0 0 10px #0284c7; font-size: 24px; text-align: center;}
+        .container { background: #1e293b; padding: 20px; border-radius: 12px; box-shadow: 0 10px 25px rgba(0,0,0,0.5); }
+        canvas {
+            border: 2px solid #0ea5e9;
+            background-color: #05050a;
+            cursor: pointer;
+            border-radius: 6px;
+        }
+        .help { color: #94a3b8; font-size: 13px; margin-top: 10px; text-align: center; max-width: 950px; }
+    </style>
+</head>
+<body>
+
+    <h2>OPERACIÓN FRONTERA: CUADRO DE HONOR</h2>
+    <div class="container">
+        <canvas id="canvasMedals" width="950" height="550"></canvas>
+    </div>
+    <div class="help">
+        <strong>Fin de Simulación:</strong> Al terminar el décimo reactivo, el sistema compilará tu rendimiento global y te asignará tu condecoración de planta junto con tu rango de puntaje extra.
+    </div>
+
+    <script {nonce}>
+        const canvas = document.getElementById('canvasMedals');
+        const ctx = canvas.getContext('2d');
+
+        // --- ESTADO DEL JUEGO ---
+        let estadoJuego = "INTRO"; // INTRO, JUEGO, TERMINADO
+        let nivelActual = 1;
+        let preguntaIndex = 0; 
+        let scoreTotal = 0;
+        let eficienciaBytecode = 100.0; 
+        let presion = 60.0;
+        let totalErrores = 0;
+        let mostrandoFeedback = false;
+        let feedbackActual = "";
+        let t = 0;
+        
+        let historialPresion = Array(40).fill(60.0);
+
+        // --- BANCO DE PREGUNTAS ---
+        const bancoPreguntas = {
+            1: [
+                { q: "1. ¿Qué representa físicamente la viscosidad (mu) en la ley de Newton del transporte de momentum?", a: "[A] La difusividad molecular de la cantidad de movimiento.", b: "[B] La resistencia interna del fluido a fluir bajo un esfuerzo cortante.", c: "[C] La fuerza neta por unidad de volumen geométrico.", cor: "B", fail: "RETROALIMENTACIÓN: ¡Incorrecto! La viscosidad mide la resistencia interna debido a las fuerzas intermoleculares." },
+                { q: "2. En condiciones de frontera, ¿qué significa la condición de 'No-Slip'?", a: "[A] Que el fluido resbala sin fricción en paredes rugosas.", b: "[B] Que la velocidad relativa entre el fluido y el sólido es cero.", c: "[C] Que el esfuerzo de corte se duplica en la interfase.", cor: "B", fail: "RETROALIMENTACIÓN: ¡Cuidado! Al ser 'No-Slip', las fuerzas de adhesión imponen que el fluido tome la velocidad de la pared sólida." },
+                { q: "3. ¿Cuál es la unidad del flujo de momentum en el Sistema Internacional (SI)?", a: "[A] Pascales (Pa) o N/m^2.", b: "[B] kg/(m*s^2).", c: "[C] Joules por segundo cuadrado.", cor: "A", fail: "RETROALIMENTACIÓN: ¡Error! El flujo de momentum equivale a fuerza por unidad de área, lo cual se traduce directamente a Pascales (Pa)." },
+                { q: "4. En un balance de momentum de envoltura, la entrada y salida se calculan mediante:", a: "[A] Solo transporte convectivo molecular.", b: "[B] Transporte convectivo + transporte molecular (viscoso).", c: "[C] Gradientes hidrostáticos de densidad exclusivamente.", cor: "B", fail: "RETROALIMENTACIÓN: ¡Balance incompleto! El momentum se transporta por mecanismos molecular (viscosidad) y convectivo (movimiento global)." },
+                { q: "5. Para un fluido dentro de una tubería, ¿qué condición límite se aplica en el eje central (r=0)?", a: "[A] Continuidad de presión (P1 = P2).", b: "[B] Simetría de velocidades (dv/dr = 0).", c: "[C] Esfuerzo cortante máximo alcanzado.", cor: "B", fail: "RETROALIMENTACIÓN: ¡Geometría incorrecta! Debido a la simetría, el perfil alcanza su máximo en el centro, haciendo que la derivada (dv/dr) sea cero." },
+                { q: "6. El mecanismo macroscópico o global de transporte de momentum se conoce como:", a: "[A] Transporte Viscoso.", b: "[B] Transporte Convectivo (por movimiento global del fluido).", c: "[C] Difusión molecular pura.", cor: "B", fail: "RETROALIMENTACIÓN: ¡Confusión! El transporte macroscópico es puramente la convección debida al arrastre físico del volumen de fluido." },
+                { q: "7. ¿Qué establece el principio de continuidad de esfuerzo en una interfase Líquido-Líquido?", a: "[A] El esfuerzo cortante del fluido 1 debe ser igual al del fluido 2.", b: "[B] La velocidad en la interfase siempre se vuelve infinita.", c: "[C] La viscosidad aparente se promedia aritméticamente.", cor: "A", fail: "RETROALIMENTACIÓN: ¡Error de frontera líquida! En una interfase, la tercera ley de Newton exige que los esfuerzos (tau) sean idénticos." },
+                { q: "8. Si un fluido posee un comportamiento pseudoplástico, su viscosidad aparente:", a: "[A] Disminuye al aumentar el gradiente de rapidez de deformación.", b: "[B] Permanece constante sin importar el esfuerzo aplicado.", c: "[C] Aumenta de manera lineal con el tiempo de residencia.", cor: "A", fail: "RETROALIMENTACIÓN: ¡Reología incorrecta! Los fluidos pseudoplásticos reducen su viscosidad aparente bajo esfuerzo cortante ('shear-thinning')." },
+                { q: "9. ¿Qué fuerza externa suele integrarse comúnmente en el balance de momentum?", a: "[A] Fuerza centrífuga molecular.", b: "[B] Fuerza de gravedad (densidad por gravedad).", c: "[C] Tensión superficial de gases inertes.", cor: "B", fail: "RETROALIMENTACIÓN: ¡Omisión de fuerzas! La gravedad actúa sobre toda la masa generando el término hidrostático (rho * g)." },
+                { q: "10. La ley de viscosidad de Newton establece que el esfuerzo cortante es proporcional a:", a: "[A] El gradiente negativo de la velocidad.", b: "[B] El inverso del diámetro de la tubería.", c: "[C] La densidad al cuadrado del fluido en movimiento.", cor: "A", fail: "RETROALIMENTACIÓN: ¡Fórmula errada! La ley de Newton postula que el esfuerzo es directamente proporcional al gradiente negativo de velocidad." }
+            ]
+        };
+
+        const botones = {
+            A: { x: 510, y: 340, w: 410, h: 45, texto: "" },
+            B: { x: 510, y: 400, w: 410, h: 45, texto: "" },
+            C: { x: 510, y: 460, w: 410, h: 45, texto: "" },
+            CONTINUAR: { x: 510, y: 430, w: 410, h: 50, texto: "[ PULSA AQUÍ PARA REPARAR Y CONTINUAR ]" },
+            INICIAR: { x: 275, y: 440, w: 400, h: 55, texto: "INICIAR COMPILACIÓN DE PLANTA" }
+        };
+
+        function loop() {
+            t += 0.05;
+            if (estadoJuego === "JUEGO" && !mostrandoFeedback) {
+                if (eficienciaBytecode > 10.0) eficienciaBytecode -= 0.12; 
+                presion += Math.sin(t) * 0.1 + 0.02;
+                historialPresion.shift();
+                historialPresion.push(presion);
+            }
+            render();
+            requestAnimationFrame(loop);
+        }
+
+        // Función para dibujar una medalla estilizada vectorialmente en Canvas
+        function drawMedal(x, y, tipo) {
+            let colorMetal, colorBrillo, letra;
+            if (tipo === "ORO") { colorMetal = "#d4af37"; colorBrillo = "#f3e5ab"; letra = "O"; }
+            else if (tipo === "PLATA") { colorMetal = "#b4b4b4"; colorBrillo = "#e1e1e1"; letra = "P"; }
+            else { colorMetal = "#cd7f32"; colorBrillo = "#e9967a"; letra = "B"; }
+
+            // Listones de la medalla (V invertida)
+            ctx.fillStyle = "#ef4444"; // Listón Izquierdo
+            ctx.beginPath(); ctx.moveTo(x - 20, y - 50); ctx.lineTo(x, y - 10); ctx.lineTo(x - 35, y - 10); ctx.closePath(); ctx.fill();
+            ctx.fillStyle = "#1e40af"; // Listón Derecho
+            ctx.beginPath(); ctx.moveTo(x + 20, y - 50); ctx.lineTo(x, y - 10); ctx.lineTo(x + 35, y - 10); ctx.closePath(); ctx.fill();
+
+            // Cuerpo de la medalla (Círculo externo con relieve)
+            ctx.fillStyle = colorMetal;
+            ctx.beginPath(); ctx.arc(x, y, 45, 0, Math.PI * 2); ctx.fill();
+            ctx.strokeStyle = colorBrillo; ctx.lineWidth = 3; ctx.stroke();
+
+            // Círculo interno
+            ctx.fillStyle = "rgba(0, 0, 0, 0.2)";
+            ctx.beginPath(); ctx.arc(x, y, 35, 0, Math.PI * 2); ctx.fill();
+
+            // Inicial de Medalla
+            ctx.fillStyle = colorBrillo;
+            ctx.font = "bold 32px Georgia";
+            ctx.textAlign = "center";
+            ctx.fillText(letra, x, y + 11);
+            ctx.textAlign = "left"; // Reset del textAlign base
+        }
+
+        function render() {
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+            if (estadoJuego === "INTRO") {
+                // --- PANTALLA INTRO ---
+                ctx.strokeStyle = "#0ea5e9"; ctx.lineWidth = 3; ctx.strokeRect(15, 15, canvas.width - 30, canvas.height - 30);
+                ctx.fillStyle = "#38bdf8"; ctx.font = "bold 26px monospace"; ctx.fillText("★ BOUNDARY MASTER PRO: MEDAL EDITION ★", 160, 65);
+                ctx.fillStyle = "#e2e8f0"; ctx.font = "14px monospace"; ctx.fillText("BIENVENIDO, INGENIERO DE CONTROL DE PROCESOS", 280, 105);
+
+                ctx.fillStyle = "#1e293b"; ctx.fillRect(40, 130, 870, 95);
+                ctx.fillStyle = "#94a3b8"; ctx.font = "11px monospace";
+                let lore = "SINOPSIS: Un error en el sistema SCADA desconfiguró los balances de envoltura en el reactor anular. Resuelve las 10 preguntas críticas de transferencia de momentum. Tus respuestas correctas y velocidad definirán si tu nombre entra en el tablero con medalla de Bronce, Plata u Oro.";
+                wrapText(ctx, lore, 55, 155, 840, 16);
+
+                ctx.strokeStyle = "#f59e0b"; ctx.strokeRect(40, 245, 420, 170);
+                ctx.fillStyle = "#f59e0b"; ctx.font = "bold 12px monospace"; ctx.fillText("⚡ REGLAS Y DINÁMICA DE COMPETENCIA", 55, 270);
+                ctx.fillStyle = "#f8fafc"; ctx.font = "11px monospace";
+                ctx.fillText("• BYTECODE EFFICIENCY: El tiempo reduce el score.", 55, 295);
+                ctx.fillText("• PENALIZACIONES: Equivocarse resta -25 puntos.", 55, 325);
+                ctx.fillText("• RETROALIMENTACIÓN: Detiene el reloj para análisis.", 55, 355);
+
+                ctx.strokeStyle = "#10b981"; ctx.strokeRect(490, 245, 420, 170);
+                ctx.fillStyle = "#10b981"; ctx.font = "bold 12px monospace"; ctx.fillText("🥇 REQUISITOS DE PREMIACIÓN", 505, 270);
+                ctx.fillStyle = "#f8fafc";
+                ctx.fillText("🥇 MEDALLA DE ORO  : >650 pts y <= 2 errores.", 505, 295);
+                ctx.fillText("🥈 MEDALLA DE PLATA: 400-640 pts y <= 4 errores.", 505, 325);
+                ctx.fillText("🥉 MEDALLA DE BRONCE: Completar con éxito la planta.", 505, 355);
+
+                let btnI = botones.INICIAR;
+                ctx.fillStyle = "#0ea5e9"; ctx.fillRect(btnI.x, btnI.y, btnI.w, btnI.h);
+                ctx.strokeStyle = "#f8fafc"; ctx.strokeRect(btnI.x, btnI.y, btnI.w, btnI.h);
+                ctx.fillStyle = "#020617"; ctx.font = "bold 13px monospace"; ctx.fillText(btnI.texto, btnI.x + 44, btnI.y + 33);
+
+            } else if (estadoJuego === "JUEGO") {
+                // --- PANEL DE JUEGO PRINCIPAL ---
+                ctx.strokeStyle = "#1e293b"; ctx.lineWidth = 2; ctx.strokeRect(20, 20, 450, 240);
+                ctx.fillStyle = "#38bdf8"; ctx.font = "bold 12px monospace"; ctx.fillText("MONITOR DE PROCESO OPERATIVO", 40, 45);
+
+                ctx.strokeStyle = mostrandoFeedback ? "#ef4444" : "#0ea5e9";
+                ctx.beginPath();
+                for(let i=0; i<historialPresion.length; i++) {
+                    let x = 35 + (i * 10.5); let y = 230 - ((historialPresion[i] - 40) * 2.2);
+                    if(i===0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
+                }
+                ctx.stroke();
+
+                ctx.fillStyle = "#1e293b"; ctx.fillRect(20, 280, 450, 245); ctx.strokeRect(20, 280, 450, 245);
+                ctx.fillStyle = "#f8fafc"; ctx.font = "bold 13px monospace"; ctx.fillText(`PUNTUACIÓN ACUMULADA: ${Math.round(scoreTotal)} PTS`, 40, 315);
+                ctx.fillStyle = "#ef4444"; ctx.fillText(`ERRORES REGISTRADOS: ${totalErrores}`, 40, 345);
+                ctx.fillStyle = "#94a3b8"; ctx.fillText(`EFICIENCIA DE COMPILACIÓN (BYTECODE):`, 40, 385);
+                ctx.fillStyle = "#020617"; ctx.fillRect(40, 395, 390, 20);
+                
+                let colorEf = eficienciaBytecode > 60 ? "#10b981" : (eficienciaBytecode > 30 ? "#f59e0b" : "#ef4444");
+                ctx.fillStyle = mostrandoFeedback ? "#475569" : colorEf; ctx.fillRect(40, 395, 390 * (eficienciaBytecode/100), 20);
+                ctx.fillStyle = "#f8fafc"; ctx.fillText(`${eficienciaBytecode.toFixed(1)}%`, 210, 410);
+                ctx.fillStyle = "#38bdf8"; ctx.fillText(`PROGRESO DE RETOS: ${preguntaIndex}/10`, 40, 455);
+                ctx.fillText(`PENALIZACIÓN: -${totalErrores * 25} PTS`, 40, 485);
+
+                ctx.strokeStyle = mostrandoFeedback ? "#ef4444" : "#0ea5e9"; ctx.strokeRect(490, 20, 440, 505);
+                ctx.fillStyle = mostrandoFeedback ? "#ef4444" : "#0ea5e9"; ctx.fillRect(491, 21, 438, 40);
+                ctx.fillStyle = "#020617"; ctx.font = "bold 12px monospace";
+                ctx.fillText(mostrandoFeedback ? "ALERTA: DEFECTO FÍSICO DETECTADO" : "VALIDADOR DE MÉTODOS DE TRANSFERENCIA", 505, 46);
+
+                let p = bancoPreguntas[nivelActual][preguntaIndex];
+                if (!mostrandoFeedback) {
+                    ctx.fillStyle = "#f8fafc"; ctx.font = "12px monospace"; wrapText(ctx, p.q, 510, 95, 400, 18);
+                    botones.A.texto = p.a; botones.B.texto = p.b; botones.C.texto = p.c;
+
+                    for (let key in botones) {
+                        if(key === "CONTINUAR" || key === "INICIAR") continue;
+                        let btn = botones[key];
+                        ctx.fillStyle = "#1e293b"; ctx.fillRect(btn.x, btn.y, btn.w, btn.h);
+                        ctx.strokeStyle = "#38bdf8"; ctx.strokeRect(btn.x, btn.y, btn.w, btn.h);
+                        ctx.fillStyle = "#e2e8f0"; ctx.font = "11px monospace";
+                        wrapText(ctx, btn.texto, btn.x + 12, btn.y + 20, btn.w - 20, 14);
+                    }
+                } else {
+                    ctx.fillStyle = "#fecaca"; ctx.fillRect(510, 85, 400, 310);
+                    ctx.strokeStyle = "#ef4444"; ctx.strokeRect(510, 85, 400, 310);
+                    ctx.fillStyle = "#991b1b"; ctx.font = "bold 11px monospace"; wrapText(ctx, feedbackActual, 525, 115, 370, 18);
+
+                    let btnC = botones.CONTINUAR;
+                    ctx.fillStyle = "#ef4444"; ctx.fillRect(btnC.x, btnC.y, btnC.w, btnC.h);
+                    ctx.strokeStyle = "#f8fafc"; ctx.strokeRect(btnC.x, btnC.y, btnC.w, btnC.h);
+                    ctx.fillStyle = "#f8fafc"; ctx.font = "bold 11px monospace"; ctx.fillText(btnC.texto, btnC.x + 24, btnC.y + 30);
+                }
+            } else if (estadoJuego === "TERMINADO") {
+                // ========================================================
+                // NUEVA PANTALLA DE SCORE FINAL Y MEDALLERO ENLISTADO
+                // ========================================================
+                ctx.strokeStyle = "#10b981"; ctx.lineWidth = 3; ctx.strokeRect(15, 15, canvas.width - 30, canvas.height - 30);
+
+                // Título del podio
+                ctx.fillStyle = "#10b981"; ctx.font = "bold 24px monospace";
+                ctx.fillText("📋 REPORTE DE EVALUACIÓN GENERAL: AUDITORÍA DE MOMENTUM", 90, 60);
+
+                // Tarjeta de datos numéricos del alumno
+                ctx.fillStyle = "#1e293b"; ctx.fillRect(50, 100, 420, 395);
+                ctx.strokeStyle = "#334155"; ctx.strokeRect(50, 100, 420, 395);
+
+                ctx.fillStyle = "#38bdf8"; ctx.font = "bold 14px monospace"; ctx.fillText("MÉTRICAS DEL OPERADOR:", 75, 140);
+                ctx.fillStyle = "#f8fafc"; ctx.font = "12px monospace";
+                ctx.fillText(`• PUNTOS LOGRADOS : ${Math.round(scoreTotal)} PTS`, 75, 185);
+                ctx.fillText(`• ERRORES EN PLANTA: ${totalErrores} FALLOS`, 75, 215);
+                ctx.fillText(`• PENALIZACIÓN    : -${totalErrores * 25} PTS`, 75, 245);
+                
+                // Determinar tipo de medalla y recompensa académica
+                let medallaObtenida = "BRONCE";
+                let premioText = "RANGO JUNIOR: Sin incentivos (Cumplió la entrega ordinaria).";
+                let colorPremio = "#cd7f32";
+
+                if (scoreTotal >= 650 && totalErrores <= 2) {
+                    medallaObtenida = "ORO";
+                    premioText = "RANGO ÉLITE: +1.5 Puntos Reales Directos en Examen U1.";
+                    colorPremio = "#d4af37";
+                } else if (scoreTotal >= 400 && totalErrores <= 4) {
+                    medallaObtenida = "PLATA";
+                    premioText = "RANGO SENIOR: +0.8 Puntos Reales Directos en Examen U1.";
+                    colorPremio = "#b4b4b4";
+                }
+
+                ctx.fillStyle = colorPremio; ctx.font = "bold 13px monospace"; ctx.fillText("BENEFICIO ADQUIRIDO:", 75, 310);
+                ctx.fillStyle = "#f8fafc"; ctx.font = "11px monospace";
+                wrapText(ctx, premioText, 75, 340, 370, 18);
+
+                // Sección derecha: El Podio de Medallas Enlistadas
+                ctx.fillStyle = "#0f172a"; ctx.fillRect(500, 100, 400, 395);
+                ctx.strokeStyle = "#0ea5e9"; ctx.strokeRect(500, 100, 400, 395);
+
+                ctx.fillStyle = "#0ea5e9"; ctx.font = "bold 13px monospace";
+                ctx.fillText("CONDECORACIÓN OFICIAL DE PLANTA", 590, 130);
+
+                // Dibujar dinámicamente la medalla ganada en grande
+                drawMedal(700, 250, medallaObtenida);
+
+                // Texto del estatus de la medalla en el centro
+                ctx.fillStyle = colorPremio;
+                ctx.font = "bold 20px monospace";
+                ctx.textAlign = "center";
+                ctx.fillText(`★ MEDALLA DE ${medallaObtenida} ★`, 700, 350);
+
+                ctx.fillStyle = "#94a3b8";
+                ctx.font = "11px monospace";
+                ctx.fillText("Muestra esta pantalla a tu profesor", 700, 400);
+                ctx.fillText("para validar tu registro en el acta.", 700, 420);
+                ctx.textAlign = "left"; // Reset analítico
+            }
+        }
+
+        function wrapText(context, text, x, y, maxWidth, lineHeight) {
+            let words = text.split(' '); let line = '';
+            for(let n = 0; n < words.length; n++) {
+                let testLine = line + words[n] + ' '; let metrics = context.measureText(testLine);
+                if (metrics.width > maxWidth && n > 0) {
+                    context.fillText(line, x, y); line = words[n] + ' '; y += lineHeight;
+                } else { line = testLine; }
+            }
+            context.fillText(line, x, y);
+        }
+
+        canvas.addEventListener('click', function(e) {
+            const rect = canvas.getBoundingClientRect();
+            const mx = e.clientX - rect.left; const my = e.clientY - rect.top;
+
+            if (estadoJuego === "INTRO") {
+                let btnI = botones.INICIAR;
+                if (mx >= btnI.x && mx <= btnI.x + btnI.w && my >= btnI.y && my <= btnI.y + btnI.h) {
+                    estadoJuego = "JUEGO"; eficienciaBytecode = 100.0;
+                }
+            } else if (estadoJuego === "JUEGO") {
+                if (!mostrandoFeedback) {
+                    for (let key in botones) {
+                        if(key === "CONTINUAR" || key === "INICIAR") continue;
+                        let btn = botones[key];
+                        if (mx >= btn.x && mx <= btn.x + btn.w && my >= btn.y && my <= btn.y + btn.h) validarRespuesta(key);
+                    }
+                } else {
+                    let btnC = botones.CONTINUAR;
+                    if (mx >= btnC.x && mx <= btnC.x + btnC.w && my >= btnC.y && my <= btnC.y + btnC.h) {
+                        mostrandoFeedback = false; eficienciaBytecode = 100.0; preguntaIndex++;
+                        if (preguntaIndex >= 10) estadoJuego = "TERMINADO";
+                    }
+                }
+            }
+        });
+
+        function validarRespuesta(opcion) {
+            let p = bancoPreguntas[nivelActual][preguntaIndex];
+            if (opcion === p.cor) {
+                scoreTotal += 100 * (eficienciaBytecode / 100); preguntaIndex++; eficienciaBytecode = 100.0;
+                if (preguntaIndex >= 10) estadoJuego = "TERMINADO";
+            } else {
+                totalErrores++; scoreTotal -= 25; if (scoreTotal < 0) scoreTotal = 0;
+                feedbackActual = p.fail; mostrandoFeedback = true;
+            }
+        }
+
+        loop();
+    </script>
+</body>
+</html>
